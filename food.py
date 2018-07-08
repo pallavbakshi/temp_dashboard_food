@@ -29,6 +29,7 @@ food_types = [{"label": food, "value": food} for food in FOOD_ITEMS]
 
 app = dash.Dash()
 app.css.append_css({'external_url': 'https://codepen.io/plotly/pen/EQZeaW.css'})
+server = app.server
 
 
 app.layout = html.Div(
@@ -250,4 +251,4 @@ def update_graph(food_item,):
 
 
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    app.run_server()

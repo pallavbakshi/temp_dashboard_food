@@ -1,9 +1,6 @@
-import os
-import pickle
 import pandas as pd
 import plotly.graph_objs as go
-from datetime import datetime, timedelta
-import pytz
+from datetime import datetime
 from food_constants import (
     FOOD_ITEMS,
     FOOD_COLOR,
