@@ -1,128 +1,253 @@
+# -*- coding: utf-8 -*-
+import sys
+import plotly.graph_objs as go
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
+from datetime import datetime
 
-import colorlover as cl
-import datetime as dt
-import flask
-import os
-import pandas as pd
-from pandas_datareader.data import DataReader
-import time
+from food_utils import (
+    load_data,
+    create_quantity_statistics_graph,
+    create_prediction_radar_chart,
+    create_wastage_radar_chart,
+    create_combine_item_wastage_graph,
+    create_per_item_usage_graph,
+    create_purchase_item_ticker,
+    combine_wastage_by_item_purchased,
+    combine_usage_for_item_purchased,
+    create_subset_of_samples_based_on_user_inputs)
+from food_constants import FOOD_ITEMS, PURCHASED_COLOR, RAW_WASTE_COLOR
 
-app = dash.Dash('stock-tickers')
-server = app.server
+samples_df, ticker = load_data()
 
-app.scripts.config.serve_locally = False
-dcc._js_dist[0]['external_url'] = 'https://cdn.plot.ly/plotly-finance-1.28.0.min.js'
+if samples_df is None:
+    print("Loading dataframe failed. Specify the correct folder.")
+    sys.exit(1)
 
-colorscale = cl.scales['9']['qual']['Paired']
+food_types = [{"label": food, "value": food} for food in FOOD_ITEMS]
 
-df_symbol = pd.read_csv('tickers.csv')
+app = dash.Dash()
+app.css.append_css({'external_url': 'https://codepen.io/plotly/pen/EQZeaW.css'})
 
-app.layout = html.Div([
-    html.Div([
-        html.H2('Morningstar Finance Explorer',
-                style={'display': 'inline',
-                       'float': 'left',
-                       'font-size': '2.65em',
-                       'margin-left': '7px',
-                       'font-weight': 'bolder',
-                       'font-family': 'Product Sans',
-                       'color': "rgba(117, 117, 117, 0.95)",
-                       'margin-top': '20px',
-                       'margin-bottom': '0'
-                       }),
-        html.Img(src="https://s3-us-west-1.amazonaws.com/plotly-tutorials/logo/new-branding/dash-logo-by-plotly-stripe.png",
-                style={
-                    'height': '100px',
-                    'float': 'right'
-                },
+
+app.layout = html.Div(
+    style={"background-color": "white"},
+    children=[
+        html.Div(
+            children=[
+                html.Div(
+                    style={"margin-bottom": "8px", "width": "20vw"},
+                    className="4 columns",
+                    children=[
+                        html.Div(
+                            children=dcc.Dropdown(
+                                id="food-item",
+                                options=food_types,
+                                placeholder="item",
+                                searchable=True,
+                                value=FOOD_ITEMS[0]
+                            )
+                        ),
+                    ]
+                ),
+                html.Div(
+                    style={"margin-bottom": "8px", "width": "35vw", "color": PURCHASED_COLOR, "font-size": 20},
+                    className="4 columns",
+                    children=[
+                        html.Div(
+                            id="prediction-tip"
+                            )
+                    ]
+                ),
+                html.Div(
+                    style={"margin-bottom": "8px", "width": "35vw", "color": RAW_WASTE_COLOR, "font-size": 20},
+                    className="4 columns",
+                    children=[
+                        html.Div(
+                            id="storage-tip"
+                        ),
+                    ]
+                )
+            ],
+            className="row"
         ),
-    ]),
-    dcc.Dropdown(
-        id='stock-ticker-input',
-        options=[{'label': s[0], 'value': str(s[1])}
-                 for s in zip(df_symbol.Company, df_symbol.Symbol)],
-        value=['YHOO', 'GOOGL'],
-        multi=True
-    ),
-    html.Div(id='graphs')
-], className="container")
 
-def bbands(price, window_size=10, num_of_std=5):
-    rolling_mean = price.rolling(window=window_size).mean()
-    rolling_std  = price.rolling(window=window_size).std()
-    upper_band = rolling_mean + (rolling_std*num_of_std)
-    lower_band = rolling_mean - (rolling_std*num_of_std)
-    return rolling_mean, upper_band, lower_band
+        # dcc.Interval(id='my-interval', interval=1*10**3, n_intervals=0),
+        html.Div(
+            [
+                html.Div([dcc.Graph(id="quantity-stats")], className="6 columns", style={"margin": 0, "width": "60vw", "height": "100vh"}),
+                html.Div([dcc.Graph(id="prediction-radar-chart"),],
+                         style={"margin": 0, "width": "36vw"},
+                         className="3 columns"
+                         ),
+                html.Div(
+                    [dcc.Graph(id="wastage-radar-chart")],
+                    style={"margin": 0, "width": "36vw"},
+                    className="3 columns"
+                ),
+            ],
+            style={"height": "100vh"},
+            className="row"
+        ),
+        html.Div(
+            style={"height": "50vh"},
+            className="row",
+            children=[
+                html.Div([dcc.Graph(id="combine-item-wastage-pie-chart")], style={"width": "30vw"}, className="4 columns"),
+                html.Div([dcc.Graph(id="per-item-usage-pie-chart")], style={"width": "30vw",}, className="4 columns"),
+                html.Div([dcc.Graph(id="purchase-item-price-ticker")], style={"width": "30vw"}, className="4 columns"),
+            ]
+        )
+    ]
+)
+
 
 @app.callback(
-    dash.dependencies.Output('graphs','children'),
-    [dash.dependencies.Input('stock-ticker-input', 'value')])
-def update_graph(tickers):
-    graphs = []
-    for i, ticker in enumerate(tickers):
-        try:
-            df = DataReader(str(ticker), 'morningstar',
-                            dt.datetime(2017, 1, 1),
-                            dt.datetime.now(),
-                            retry_count=0).reset_index()
-        except:
-            graphs.append(html.H3(
-                'Data is not available for {}, please retry later.'.format(ticker),
-                style={'marginTop': 20, 'marginBottom': 20}
-            ))
-            continue
+    dash.dependencies.Output("quantity-stats", "figure"),
+    [
+        dash.dependencies.Input("food-item", "value"),
+    ],
+)
+def update_graph(food_item):
+    if food_item is not "" and food_item is not None:
+        new_samples = create_subset_of_samples_based_on_user_inputs(samples_df, food_item)
 
-        candlestick = {
-            'x': df['Date'],
-            'open': df['Open'],
-            'high': df['High'],
-            'low': df['Low'],
-            'close': df['Close'],
-            'type': 'candlestick',
-            'name': ticker,
-            'legendgroup': ticker,
-            'increasing': {'line': {'color': colorscale[0]}},
-            'decreasing': {'line': {'color': colorscale[1]}}
-        }
-        bb_bands = bbands(df.Close)
-        bollinger_traces = [{
-            'x': df['Date'], 'y': y,
-            'type': 'scatter', 'mode': 'lines',
-            'line': {'width': 1, 'color': colorscale[(i*2) % len(colorscale)]},
-            'hoverinfo': 'none',
-            'legendgroup': ticker,
-            'showlegend': True if i == 0 else False,
-            'name': '{} - bollinger bands'.format(ticker)
-        } for i, y in enumerate(bb_bands)]
-        graphs.append(dcc.Graph(
-            id=ticker,
-            figure={
-                'data': [candlestick] + bollinger_traces,
-                'layout': {
-                    'margin': {'b': 0, 'r': 10, 'l': 60, 't': 0},
-                    'legend': {'x': 0}
-                }
-            }
-        ))
-
-    return graphs
+        if not new_samples.empty:
+            figure = create_quantity_statistics_graph(new_samples)
+            return figure
+        else:
+            print("Empty")
+            go.Figure()
+    else:
+        return go.Figure()
 
 
-external_css = ["https://fonts.googleapis.com/css?family=Product+Sans:400,400i,700,700i",
-                "https://cdn.rawgit.com/plotly/dash-app-stylesheets/2cc54b8c03f4126569a3440aae611bbef1d7a5dd/stylesheet.css"]
+@app.callback(
+    dash.dependencies.Output("prediction-radar-chart", "figure"),
+    [
+        dash.dependencies.Input("food-item", "value"),
+    ],
+)
+def update_graph(food_item):
+    if food_item is not "" and food_item is not None:
+        return create_prediction_radar_chart(food_item)
+    else:
+        return go.Figure()
 
-for css in external_css:
-    app.css.append_css({"external_url": css})
+
+@app.callback(
+    dash.dependencies.Output("wastage-radar-chart", "figure"),
+    [
+        dash.dependencies.Input("food-item", "value"),
+    ],
+)
+def update_graph(food_item):
+    if food_item is not "" and food_item is not None:
+        return create_wastage_radar_chart(food_item)
+    else:
+        return go.Figure()
 
 
-if 'DYNO' in os.environ:
-    app.scripts.append_script({
-        'external_url': 'https://cdn.rawgit.com/chriddyp/ca0d8f02a1659981a0ea7f013a378bbd/raw/e79f3f789517deec58f41251f7dbb6bee72c44ab/plotly_ga.js'
-    })
+@app.callback(
+    dash.dependencies.Output("combine-item-wastage-pie-chart", "figure"),
+    [
+        dash.dependencies.Input("food-item", "value"),
+    ],
+)
+def update_graph(food_item):
+    if food_item is not "" and food_item is not None:
+        new_samples = combine_wastage_by_item_purchased(samples_df)
+
+        if not new_samples.empty:
+            figure = create_combine_item_wastage_graph(new_samples)
+            return figure
+        else:
+            go.Figure()
+    else:
+        return go.Figure()
 
 
-if __name__ == '__main__':
+@app.callback(
+    dash.dependencies.Output("per-item-usage-pie-chart", "figure"),
+    [
+        dash.dependencies.Input("food-item", "value"),
+    ],
+)
+def update_graph(food_item):
+    if food_item is not "" and food_item is not None:
+        new_samples = combine_usage_for_item_purchased(samples_df, food_item)
+
+        if not new_samples.empty:
+            figure = create_per_item_usage_graph(new_samples, food_item)
+            return figure
+        else:
+            go.Figure()
+    else:
+        return go.Figure()
+
+
+@app.callback(
+    dash.dependencies.Output("purchase-item-price-ticker", "figure"),
+    [
+        dash.dependencies.Input("food-item", "value"),
+    ],
+    # events=[dash.dependencies.Event('my-interval', 'interval'),]
+)
+def update_graph(food_item,):
+    if food_item is not "" and food_item is not None:
+        new_samples = ticker.loc[ticker["timestamp"] <= datetime.utcnow()]
+        if not new_samples.empty:
+            figure = create_purchase_item_ticker(new_samples, food_item)
+        else:
+            figure = go.Figure()
+        return figure
+    else:
+        return go.Figure()
+
+
+@app.callback(
+    dash.dependencies.Output("prediction-tip", "children"),
+    [
+        dash.dependencies.Input("food-item", "value"),
+    ],
+)
+def update_graph(food_item,):
+    if food_item is not "" and food_item is not None:
+        if food_item == "cheese":
+            tip = "Buy 12 kg less Cheese."
+        elif food_item == "tomato":
+            tip = "Buy 10 kg less Tomato."
+        elif food_item == "onion":
+            tip = "Buy 14 kg less Onion."
+        else:
+            tip = ""
+        return tip
+    else:
+        return ""
+
+
+@app.callback(
+    dash.dependencies.Output("storage-tip", "children"),
+    [
+        dash.dependencies.Input("food-item", "value"),
+    ],
+)
+def update_graph(food_item,):
+    if food_item is not "" and food_item is not None:
+        print(RAW_WASTE_COLOR)
+        if food_item == "cheese":
+            tip = "Store cheese at 16 Degree Celsius with 42 Humidity."
+        elif food_item == "tomato":
+            tip = "Store tomato at 23 Degree Celsius with 49 Humidity."
+        elif food_item == "onion":
+            tip = "Store onion at 25 Degree Celsius with 49 Humidity."
+        else:
+            tip = ""
+        return tip
+    else:
+        return ""
+
+
+if __name__ == "__main__":
     app.run_server(debug=True)
