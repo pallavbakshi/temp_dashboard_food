@@ -55,7 +55,14 @@ app.layout = html.Div(
                     ]
                 ),
                 html.Div(
-                    style={"margin-bottom": "8px", "width": "35vw", "color": PURCHASED_COLOR, "font-size": 20},
+                    style={"margin-bottom": "8px",
+                           "width": "35vw",
+                           "font-weight": "bold",
+                           "color": PURCHASED_COLOR,
+                           "border-style": "solid",
+                           "border-radius": "15px",
+                           "text-align": "center",
+                           "font-size": 20},
                     className="4 columns",
                     children=[
                         html.Div(
@@ -64,7 +71,14 @@ app.layout = html.Div(
                     ]
                 ),
                 html.Div(
-                    style={"margin-bottom": "8px", "width": "35vw", "color": RAW_WASTE_COLOR, "font-size": 20},
+                    style={"margin-bottom": "8px",
+                           "font-weight": "bold",
+                           "width": "35vw",
+                           "border-style": "solid",
+                           "border-radius": "15px",
+                           "text-align": "center",
+                           "color": RAW_WASTE_COLOR,
+                           "font-size": 20},
                     className="4 columns",
                     children=[
                         html.Div(
