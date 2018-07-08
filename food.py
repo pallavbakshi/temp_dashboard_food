@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os
 import sys
 import plotly.graph_objs as go
 import dash
@@ -18,6 +19,7 @@ from food_utils import (
     combine_usage_for_item_purchased,
     create_subset_of_samples_based_on_user_inputs)
 from food_constants import FOOD_ITEMS, PURCHASED_COLOR, RAW_WASTE_COLOR
+print(os.listdir())
 
 samples_df, ticker = load_data()
 
